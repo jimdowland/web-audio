@@ -126,15 +126,26 @@
     speakReich(wordText);
   }
 
-  function createField(kind, pr) {
+function createField(kind, pr) {
     if (kind === 'celestial') {
       fields.push({ x: w/2, y: h*0.1, w: w*0.7, h: 2, a: 0, ta: 0.1, c: [180, 200, 255], life: 1, dec: 0.0006 });
       spawnWord();
     } else if (kind === 'deep') {
       fields.push({ x: w/2, y: h*0.9, w: w, h: h*0.4, a: 0, ta: 0.12, c: [5, 2, 10], life: 1, dec: 0.001 });
     } else {
-      const isReed = pr > 0.5;
-      fields.push({ x: rnd(w*0.1, w*0.9), y: rnd(h*0.1, h*0.9), w: isReed ? rnd(60, 120) : rnd(200, 500), h: isReed ? rnd(10, 25) : rnd(100, 350), a: 0, ta: isReed ? 0.25 : 0.1, c: isReed ? [80, 30, 140] : [25, 15, 60], life: 1, dec: rnd(0.002, 0.005) });
+      // Logic for note-based fields
+      const isReed = kind === 'reed';
+      fields.push({
+        x: rnd(w*0.1, w*0.9), y: rnd(h*0.1, h*0.9),
+        // Reeds are thin and long, Sines are large and soft
+        w: isReed ? rnd(80, 200) : rnd(200, 500), 
+        h: isReed ? rnd(5, 12) : rnd(100, 350),
+        a: 0, 
+        ta: isReed ? 0.4 : 0.1, 
+        c: isReed ? [120, 60, 40] : [25, 15, 60], // Reeds are "earthy" brown/purple
+        life: 1, 
+        dec: isReed ? 0.008 : 0.003 // Reeds vanish faster
+      });
     }
   }
 
@@ -173,20 +184,40 @@
   }
   draw();
 
-  function playSomaVoice({freq, time, amp, decay, bright, pr}) {
+function playSomaVoice({freq, time, amp, decay, bright, pr}) {
     const osc = ctx.createOscillator();
     const filter = ctx.createBiquadFilter();
     const env = ctx.createGain();
-    osc.type = "sine"; osc.frequency.setValueAtTime(freq, time);
+
+    // PROBABILISTIC REED LOGIC:
+    // As pr increases, the chance of a triangle wave increases.
+    const isReed = Math.random() < (pr * 1.2); 
+    osc.type = isReed ? "triangle" : "sine";
+
+    osc.frequency.setValueAtTime(freq, time);
+
     env.gain.setValueAtTime(0, time);
     env.gain.linearRampToValueAtTime(amp, time + 0.02);
     env.gain.exponentialRampToValueAtTime(0.0001, time + decay);
-    filter.type = "highpass"; filter.frequency.setValueAtTime(150, time);
-    osc.connect(filter); filter.connect(env); env.connect(highShelf); env.connect(limiter);
-    osc.start(time); osc.stop(time + decay + 0.5);
-    createField('cell', pr);
-  }
 
+    // Filter tuning: 
+    // If it's a reed, we dampen the "buzz" to make it sound like wood.
+    filter.type = "lowpass"; 
+    filter.frequency.setValueAtTime(isReed ? 1200 : 8000, time);
+    filter.Q.value = isReed ? 5 : 1; // Add a little 'honk' to the reed
+
+    osc.connect(filter);
+    filter.connect(env);
+    env.connect(highShelf);
+    env.connect(limiter);
+
+    osc.start(time);
+    osc.stop(time + decay + 0.5);
+    
+    // Visually match the specific note's character
+    createField(isReed ? 'reed' : 'cell', pr);
+  }
+  
   function playCelestial(time) {
     const osc = ctx.createOscillator();
     const vca = ctx.createGain();
